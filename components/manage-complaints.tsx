@@ -1,51 +1,99 @@
+
+
+
+
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, query, onSnapshot, doc, updateDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { getDatabase, ref, onValue, update } from "firebase/database"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { Check, Clock, MessageSquare } from "lucide-react"
+import { Check, Clock, MessageSquare, X } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
 
 interface Complaint {
   id: string
   studentId: string
   studentName: string
   studentEmail: string
+  hostelId: string
   message: string
-  status: "pending" | "resolved"
-  createdAt: any
+  status: "pending" | "resolved" | "rejected"
+  resolutionNote?: string
+  createdAt: number
+  updatedAt?: number
+  resolvedAt?: number
+}
+
+type ManageComplaintsProps = {
+  hostelId?: string
 }
 
 export function ManageComplaints() {
+
+  const { userData } = useAuth()
+
+  const hostelId = userData?.hostelId
+
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [loading, setLoading] = useState<string | null>(null)
+  const [notesById, setNotesById] = useState<Record<string, string>>({})
   const { toast } = useToast()
 
   useEffect(() => {
-    const q = query(collection(db, "complaints"))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const complaintData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Complaint[]
-      setComplaints(complaintData.sort((a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()))
+    const db = getDatabase()
+    const complaintsRef = ref(db, "complaints")
+
+    const unsubscribe = onValue(complaintsRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        setComplaints([])
+        return
+      }
+
+      const data = snapshot.val()
+      const list: Complaint[] = Object.entries(data).map(([id, value]: any) => ({
+        id,
+        ...value,
+      }))
+
+      // Filter by hostelId if provided
+      const filtered = hostelId ? list.filter((c) => c.hostelId === hostelId) : list
+
+      // Sort by createdAt desc
+      filtered.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+
+      setComplaints(filtered)
     })
 
-    return unsubscribe
-  }, [])
+    return () => unsubscribe()
+  }, [hostelId])
 
-  const markAsResolved = async (complaintId: string) => {
+  const updateStatus = async (complaintId: string, status: Complaint["status"]) => {
     setLoading(complaintId)
     try {
-      await updateDoc(doc(db, "complaints", complaintId), { status: "resolved" })
+      const db = getDatabase()
+      const resolutionNote = notesById[complaintId]?.trim() ?? ""
+      const updates: any = {
+        status,
+        resolutionNote,
+        updatedAt: Date.now(),
+      }
+      if (status === "resolved") {
+        updates.resolvedAt = Date.now()
+      }
+
+      await update(ref(db, `complaints/${complaintId}`), updates)
+
       toast({
-        title: "Complaint Resolved",
-        description: "The complaint has been marked as resolved.",
+        title: `Complaint ${status === "resolved" ? "Resolved" : "Rejected"}`,
+        description: `The complaint has been marked as ${status}.`,
       })
-    } catch (error) {
+
+      setNotesById((prev) => ({ ...prev, [complaintId]: "" }))
+    } catch {
       toast({
         title: "Error",
         description: "Failed to update complaint status.",
@@ -55,7 +103,7 @@ export function ManageComplaints() {
     setLoading(null)
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: Complaint["status"]) => {
     switch (status) {
       case "pending":
         return (
@@ -71,6 +119,13 @@ export function ManageComplaints() {
             Resolved
           </Badge>
         )
+      case "rejected":
+        return (
+          <Badge variant="destructive">
+            <X className="h-3 w-3 mr-1" />
+            Rejected
+          </Badge>
+        )
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -81,7 +136,9 @@ export function ManageComplaints() {
       <Card>
         <CardHeader>
           <CardTitle>Manage Food Complaints</CardTitle>
-          <CardDescription>Review and resolve student food complaints</CardDescription>
+          <CardDescription>
+            Review and update student food complaints {hostelId ? `(Hostel: ${hostelId})` : ""}
+          </CardDescription>
         </CardHeader>
       </Card>
 
@@ -95,39 +152,72 @@ export function ManageComplaints() {
         ) : (
           complaints.map((complaint) => (
             <Card key={complaint.id}>
-              <CardContent className="p-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <h3 className="font-semibold">{complaint.studentName}</h3>
-                        <p className="text-sm text-muted-foreground">{complaint.studentEmail}</p>
-                      </div>
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <h3 className="font-semibold">{complaint.studentName}</h3>
+                      <p className="text-sm text-muted-foreground">{complaint.studentEmail}</p>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">Hostel: {complaint.hostelId}</Badge>
                     {getStatusBadge(complaint.status)}
                   </div>
+                </div>
 
-                  <div className="bg-muted p-4 rounded-lg">
-                    <p className="text-sm">{complaint.message}</p>
-                  </div>
+                <div className="bg-muted p-4 rounded-lg">
+                  <p className="text-sm">{complaint.message}</p>
+                </div>
 
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      Submitted: {complaint.createdAt?.toDate().toLocaleDateString()}
-                    </p>
+                {complaint.resolutionNote ? (
+                  <p className="text-sm text-muted-foreground">
+                    Note: <span className="text-foreground">{complaint.resolutionNote}</span>
+                  </p>
+                ) : null}
 
-                    {complaint.status === "pending" && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Submitted:{" "}
+                    {complaint.createdAt
+                      ? new Date(complaint.createdAt).toLocaleString()
+                      : "—"}
+                  </p>
+
+                  {complaint.status === "pending" ? (
+                    <div className="flex items-center gap-2">
+                      <Textarea
+                        placeholder="Add resolution note (optional)"
+                        className="min-w-[220px]"
+                        rows={2}
+                        value={notesById[complaint.id] ?? ""}
+                        onChange={(e) =>
+                          setNotesById((prev) => ({
+                            ...prev,
+                            [complaint.id]: e.target.value,
+                          }))
+                        }
+                      />
                       <Button
                         size="sm"
-                        onClick={() => markAsResolved(complaint.id)}
+                        onClick={() => updateStatus(complaint.id, "resolved")}
                         disabled={loading === complaint.id}
                       >
                         <Check className="h-4 w-4 mr-1" />
-                        Mark as Resolved
+                        Resolve
                       </Button>
-                    )}
-                  </div>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => updateStatus(complaint.id, "rejected")}
+                        disabled={loading === complaint.id}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Reject
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>

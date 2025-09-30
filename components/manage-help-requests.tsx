@@ -1,13 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, query, onSnapshot, doc, updateDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { ref, onValue, update } from "firebase/database"
+import { db } from "@/lib/firebase" // <-- should export your Realtime Database instance
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-// import { Check, Clock, HelpCircle } from "lucide-react"
 
 interface HelpRequest {
   id: string
@@ -17,7 +16,7 @@ interface HelpRequest {
   description: string
   category: string
   status: "pending" | "resolved"
-  createdAt: any
+  createdAt: number // we’ll store timestamps as numbers in RTDB
 }
 
 export function ManageHelpRequests() {
@@ -26,22 +25,30 @@ export function ManageHelpRequests() {
   const { toast } = useToast()
 
   useEffect(() => {
-    const q = query(collection(db, "help_requests"))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requestData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as HelpRequest[]
-      setHelpRequests(requestData.sort((a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()))
+    const helpRequestsRef = ref(db, "help_requests")
+
+    const unsubscribe = onValue(helpRequestsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val()
+        const requestList: HelpRequest[] = Object.entries(data).map(([id, value]) => ({
+          id,
+          ...(value as Omit<HelpRequest, "id">),
+        }))
+
+        // Sort newest first
+        setHelpRequests(requestList.sort((a, b) => b.createdAt - a.createdAt))
+      } else {
+        setHelpRequests([])
+      }
     })
 
-    return unsubscribe
+    return () => unsubscribe()
   }, [])
 
   const markAsResolved = async (requestId: string) => {
     setLoading(requestId)
     try {
-      await updateDoc(doc(db, "help_requests", requestId), { status: "resolved" })
+      await update(ref(db, `help_requests/${requestId}`), { status: "resolved" })
       toast({
         title: "Request Resolved",
         description: "The help request has been marked as resolved.",
@@ -59,19 +66,9 @@ export function ManageHelpRequests() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending":
-        return (
-          <Badge variant="secondary">
-            {/* <Clock className="h-3 w-3 mr-1" /> */}
-            Pending
-          </Badge>
-        )
+        return <Badge variant="secondary">Pending</Badge>
       case "resolved":
-        return (
-          <Badge variant="default">
-            {/* <Check className="h-3 w-3 mr-1" /> */}
-            Resolved
-          </Badge>
-        )
+        return <Badge variant="default">Resolved</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -100,7 +97,6 @@ export function ManageHelpRequests() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {/* <HelpCircle className="h-5 w-5 text-muted-foreground" /> */}
                       <div>
                         <h3 className="font-semibold">{request.studentName}</h3>
                         <p className="text-sm text-muted-foreground">{request.studentEmail}</p>
@@ -118,12 +114,11 @@ export function ManageHelpRequests() {
 
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">
-                      Submitted: {request.createdAt?.toDate().toLocaleDateString()}
+                      Submitted: {new Date(request.createdAt).toLocaleDateString()}
                     </p>
 
                     {request.status === "pending" && (
                       <Button size="sm" onClick={() => markAsResolved(request.id)} disabled={loading === request.id}>
-                        {/* <Check className="h-4 w-4 mr-1" /> */}
                         Mark as Resolved
                       </Button>
                     )}

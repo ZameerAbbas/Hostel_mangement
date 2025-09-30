@@ -1,20 +1,3 @@
-// import { initializeApp } from "firebase/app"
-// import { getAuth } from "firebase/auth"
-// import { getFirestore } from "firebase/firestore"
-
-// const firebaseConfig = {
-//   apiKey: "AIzaSyA3udZH-X6mzJd9GDdMc2J30-HeP4kCI1I",
-//   authDomain: "hostel-mange.firebaseapp.com",
-//   projectId: "hostel-mange",
-//   storageBucket: "hostel-mange.firebasestorage.app",
-//   messagingSenderId: "383360415605",
-//   appId: "1:383360415605:web:1924660ec4ebabab05053c",
-// }
-
-// const app = initializeApp(firebaseConfig)
-// export const auth = getAuth(app)
-// export const db = getFirestore(app)
-
 "use client"
 
 // Simplified Firebase initialization with error handling
@@ -44,8 +27,7 @@ async function initializeFirebaseServices() {
       // Import Firebase modules
       const firebaseAppModule = await import("firebase/app")
       const firebaseAuthModule = await import("firebase/auth")
-      const firebaseDatabaseModule = await import("firebase/database") // ✅ use Realtime DB instead of Firestore
-
+      const firebaseDatabaseModule = await import("firebase/database")
       const { firebaseConfig } = await import("./firebase-config")
 
       // Initialize app

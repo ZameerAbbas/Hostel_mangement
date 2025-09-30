@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, query, onSnapshot, doc, updateDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { ref, onValue, update } from "firebase/database"
+import { db } from "@/lib/firebase" // must export the RTDB instance
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +17,7 @@ interface OutingRequest {
   date: string
   reason: string
   status: "pending" | "approved" | "rejected"
-  createdAt: any
+  createdAt: number // store timestamp as number in RTDB
 }
 
 export function ManageOutingRequests() {
@@ -26,22 +26,28 @@ export function ManageOutingRequests() {
   const { toast } = useToast()
 
   useEffect(() => {
-    const q = query(collection(db, "outing_requests"))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requestData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as OutingRequest[]
-      setOutingRequests(requestData.sort((a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()))
+    const outingRef = ref(db, "outing_requests")
+
+    const unsubscribe = onValue(outingRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val()
+        const requestList: OutingRequest[] = Object.entries(data).map(([id, value]) => ({
+          id,
+          ...(value as Omit<OutingRequest, "id">),
+        }))
+        setOutingRequests(requestList.sort((a, b) => b.createdAt - a.createdAt))
+      } else {
+        setOutingRequests([])
+      }
     })
 
-    return unsubscribe
+    return () => unsubscribe()
   }, [])
 
   const updateRequestStatus = async (requestId: string, status: "approved" | "rejected") => {
     setLoading(requestId)
     try {
-      await updateDoc(doc(db, "outing_requests", requestId), { status })
+      await update(ref(db, `outing_requests/${requestId}`), { status })
       toast({
         title: "Status Updated",
         description: `Outing request has been ${status}.`,
@@ -119,12 +125,14 @@ export function ManageOutingRequests() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <p className="text-sm font-medium">Outing Date</p>
-                      <p className="text-sm text-muted-foreground">{new Date(request.date).toLocaleDateString()}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(request.date).toLocaleDateString()}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm font-medium">Requested On</p>
                       <p className="text-sm text-muted-foreground">
-                        {request.createdAt?.toDate().toLocaleDateString()}
+                        {new Date(request.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>

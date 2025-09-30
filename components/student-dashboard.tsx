@@ -1,5 +1,6 @@
 "use client"
 import { useAuth } from "@/lib/auth-context"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -8,12 +9,63 @@ import { RequestBooking } from "@/components/request-booking"
 import { FoodComplaint } from "@/components/food-complaint"
 import { HelpRequest } from "@/components/help-request"
 import { OutingRequest } from "@/components/outing-request"
+import { ref, onValue } from "firebase/database"
+import { db } from "@/lib/firebase"
 
 
 
 
 export function StudentDashboard() {
   const { userData, logout } = useAuth()
+
+
+
+
+  // 🔹 Dashboard counters
+  const [activeBookings, setActiveBookings] = useState(0)
+  const [pendingRequests, setPendingRequests] = useState(0)
+  const [helpTickets, setHelpTickets] = useState(0)
+  const [outings, setOutings] = useState(0)
+
+  useEffect(() => {
+    if (!userData) return
+
+    // ✅ Listen to bookings
+    const bookingRef = ref(db, "bookings")
+    onValue(bookingRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val()
+        const list = Object.values(data) as any[]
+        const userBookings = list.filter((b) => b.studentId === userData.uid)
+        setActiveBookings(userBookings.length)
+      }
+    })
+
+    // ✅ Listen to outing requests
+    const outingRef = ref(db, "outing_requests")
+    onValue(outingRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val()
+        const list = Object.values(data) as any[]
+        const userOutings = list.filter((o) => o.studentId === userData.uid)
+        setOutings(userOutings.length)
+        setPendingRequests(userOutings.filter((o) => o.status === "pending").length)
+      }
+    })
+
+    // ✅ Listen to help requests
+    const helpRef = ref(db, "help_requests")
+    onValue(helpRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val()
+        const list = Object.values(data) as any[]
+        const userHelps = list.filter((h) => h.studentId === userData.uid && h.status === "pending")
+        setHelpTickets(userHelps.length)
+      }
+    })
+  }, [userData])
+
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -38,32 +90,29 @@ export function StudentDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Bookings</CardTitle>
-              {/* <Building2 className="h-4 w-4 text-muted-foreground" /> */}
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1</div>
-              <p className="text-xs text-muted-foreground">Current hostel booking</p>
+              <div className="text-2xl font-bold">{activeBookings}</div>
+              <p className="text-xs text-muted-foreground">Current hostel booking(s)</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pending Requests</CardTitle>
-              {/* <MessageSquare className="h-4 w-4 text-muted-foreground" /> */}
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-muted-foreground">Awaiting response</p>
+              <div className="text-2xl font-bold">{pendingRequests}</div>
+              <p className="text-xs text-muted-foreground">Awaiting approval</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Help Tickets</CardTitle>
-              {/* <HelpCircle className="h-4 w-4 text-muted-foreground" /> */}
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">2</div>
+              <div className="text-2xl font-bold">{helpTickets}</div>
               <p className="text-xs text-muted-foreground">Open tickets</p>
             </CardContent>
           </Card>
@@ -71,10 +120,9 @@ export function StudentDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Outings</CardTitle>
-              {/* <Calendar className="h-4 w-4 text-muted-foreground" /> */}
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1</div>
+              <div className="text-2xl font-bold">{outings}</div>
               <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>

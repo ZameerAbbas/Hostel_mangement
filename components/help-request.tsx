@@ -1,10 +1,8 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { collection, addDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { getDatabase, ref, push } from "firebase/database"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,14 +34,18 @@ export function HelpRequest() {
 
     setLoading(true)
     try {
-      await addDoc(collection(db, "help_requests"), {
+      const db = getDatabase()
+      const helpRef = ref(db, "help_requests")
+
+      await push(helpRef, {
         studentId: userData.uid,
         studentName: userData.name,
         studentEmail: userData.email,
+        hostelId: userData.hostelId, // ✅ include hostelId
         description: description.trim(),
         category,
         status: "pending",
-        createdAt: new Date(),
+        createdAt: Date.now(),
       })
 
       setDescription("")
@@ -53,6 +55,7 @@ export function HelpRequest() {
         description: "Your help request has been submitted successfully.",
       })
     } catch (error) {
+      console.error("Error submitting help request:", error)
       toast({
         title: "Error",
         description: "Failed to submit help request. Please try again.",

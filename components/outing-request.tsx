@@ -1,10 +1,8 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { collection, addDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { getDatabase, ref, push } from "firebase/database"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,14 +24,18 @@ export function OutingRequest() {
 
     setLoading(true)
     try {
-      await addDoc(collection(db, "outing_requests"), {
+      const db = getDatabase()
+      const outingRef = ref(db, "outing_requests")
+
+      await push(outingRef, {
         studentId: userData.uid,
         studentName: userData.name,
         studentEmail: userData.email,
+        hostelId: userData.hostelId, // ✅ include hostelId
         date,
         reason: reason.trim(),
         status: "pending",
-        createdAt: new Date(),
+        createdAt: Date.now(),
       })
 
       setDate("")
@@ -43,6 +45,7 @@ export function OutingRequest() {
         description: "Your outing request has been submitted for approval.",
       })
     } catch (error) {
+      console.error("Error submitting outing request:", error)
       toast({
         title: "Error",
         description: "Failed to submit outing request. Please try again.",
